@@ -363,10 +363,18 @@
       </div>
     </div>
     <div class="card">
-      <div class="settings-title">📥 로컬 백업</div>
-      <div class="settings-desc">Google Sheets 외에도 로컬 CSV 백업을 언제든 받을 수 있어요.</div>
-      <button class="btn btn-primary" onclick="exportCSV()" style="width:100%;margin-bottom:8px">거래내역 CSV 다운로드</button>
-      <button class="btn btn-ghost" onclick="exportSalaryCSV()" style="width:100%">급여명세 CSV 다운로드</button>
+      <div class="settings-title">📥 백업 · 가져오기</div>
+      <div class="settings-desc">CSV 파일로 거래 데이터를 한 번에 가져오거나 내보낼 수 있어요.</div>
+      <button class="btn btn-primary" onclick="exportCSV()" style="width:100%;margin-bottom:8px">⬇ 거래내역 CSV 다운로드</button>
+      <button class="btn btn-ghost" onclick="exportSalaryCSV()" style="width:100%;margin-bottom:16px">⬇ 급여명세 CSV 다운로드</button>
+      <hr style="border-color:var(--border);margin-bottom:16px">
+      <div class="settings-title">📤 CSV 가져오기</div>
+      <div class="settings-desc" style="margin-top:6px">거래내역 CSV 파일을 선택하면 기존 데이터에 추가돼요.<br>형식: 날짜, 내용, 카테고리, 소속, 구분(수입/지출), 결제수단, 금액, 메모</div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="csv-import-file" accept=".csv" style="flex:1;padding:8px;font-size:12px">
+        <button class="btn btn-primary" onclick="importCSV()">📤 가져오기</button>
+      </div>
+      <div id="csv-import-result" style="margin-top:10px;font-size:12px;display:none"></div>
       <hr style="border-color:var(--border);margin:16px 0">
       <div class="settings-title" style="color:var(--red)">⚠️ 위험 구역</div>
       <button class="btn btn-danger" onclick="clearAllData()" style="width:100%;margin-top:8px">전체 데이터 삭제</button>
@@ -889,6 +897,70 @@ function renderSettings(){
         Google 계정으로 연동하기
       </button>`;
   }
+}
+
+// ==================== CSV IMPORT ====================
+async function importCSV(){
+  const file=document.getElementById('csv-import-file').files[0];
+  const resultEl=document.getElementById('csv-import-result');
+  if(!file){showToast('⚠️ CSV 파일을 선택해주세요','var(--red)');return;}
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try{
+      const text=e.target.result;
+      const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+      if(lines.length<2){showToast('⚠️ 데이터가 없어요','var(--red)');return;}
+      // Skip header row
+      const dataLines=lines.slice(1);
+      let added=0,skipped=0;
+      const newTxs=[];
+      dataLines.forEach(line=>{
+        // Parse CSV properly handling quoted fields
+        const cols=parseCSVLine(line);
+        if(cols.length<7)return;
+        const date=(cols[0]||'').trim();
+        const desc=(cols[1]||'').trim();
+        const category=(cols[2]||'').trim();
+        const belong=(cols[3]||'').trim();
+        const typeStr=(cols[4]||'').trim();
+        const payment=(cols[5]||'').trim();
+        const amount=parseFloat((cols[6]||'0').replace(/,/g,''));
+        const memo=(cols[7]||'').trim();
+        if(!date||!desc||!amount){skipped++;return;}
+        const type=typeStr==='수입'?'income':'expense';
+        newTxs.push({id:Date.now()+Math.random(),date,desc,category,belong,type,payment,amount,memo,vat:'no'});
+        added++;
+      });
+      transactions=[...transactions,...newTxs];
+      localStorage.setItem('art_transactions',JSON.stringify(transactions));
+      resultEl.style.display='block';
+      resultEl.style.color='var(--green)';
+      resultEl.textContent=`✅ ${added}건 추가 완료! (${skipped}건 건너뜀)`;
+      showToast(`✅ ${added}건 가져오기 완료!`);
+      if(useGoogleSheets)await saveAllToSheets();
+      renderDashboard();
+    }catch(err){
+      resultEl.style.display='block';
+      resultEl.style.color='var(--red)';
+      resultEl.textContent='❌ 오류: '+err.message;
+      showToast('❌ 가져오기 실패','var(--red)');
+    }
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+function parseCSVLine(line){
+  const result=[];
+  let current='';
+  let inQuotes=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){inQuotes=!inQuotes;}
+    else if(ch===','&&!inQuotes){result.push(current);current='';}
+    else{current+=ch;}
+  }
+  result.push(current);
+  return result.map(s=>s.replace(/^"|"$/g,'').trim());
 }
 
 // ==================== CSV ====================
