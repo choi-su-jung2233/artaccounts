@@ -1001,6 +1001,32 @@ function loadSampleData(){
 window.onload=()=>{
   const ms=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
   const fm=document.getElementById('filter-month');if(fm)fm.value=ms;
+  // Auto login
+  const savedEmail=localStorage.getItem('art_user_email');
+  const savedSheetId=localStorage.getItem('art_sheet_id');
+  if(savedEmail&&savedSheetId){
+    userEmail=savedEmail;
+    showApp();
+    renderDashboard();
+    setTimeout(()=>{
+      try{
+        const tc=google.accounts.oauth2.initTokenClient({
+          client_id:CLIENT_ID,scope:SCOPES,prompt:'',
+          callback:async(r)=>{
+            if(r.error)return;
+            accessToken=r.access_token;useGoogleSheets=true;
+            document.getElementById('user-email-display').textContent=savedEmail;
+            document.getElementById('sync-btn').style.display='';
+            setInterval(()=>{tc.requestAccessToken({prompt:''});},50*60*1000);
+            await loadFromSheets();renderDashboard();
+            updateSyncStatus('ok','Google Sheets 연동됨');
+            showToast('✅ 동기화 완료!');
+          }
+        });
+        tc.requestAccessToken({prompt:''});
+      }catch(e){updateSyncStatus('off','로컬 모드');}
+    },1500);
+  }
 };
 </script>
 </body>
